@@ -1,0 +1,268 @@
+vcverifier:
+  enabled: false
+credentials-config-service:
+  enabled: false
+trusted-issuers-list:
+  enabled: false
+mysql:
+  enabled: false
+odrl-pap:
+  enabled: false
+apisix:
+  enabled: false
+scorpio:
+  enabled: false
+postgis:
+  enabled: false
+tm-forum-api:
+  enabled: false
+contract-management:
+  enabled: false
+postgresql:
+  primary:
+    persistence:
+      enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+keycloak:
+  ingress:
+    enabled: true
+    hostname: keycloak-consumer.127.0.0.1.nip.io
+  command:
+    - /bin/bash
+  args:
+    - -ec
+    - |
+      #!/bin/sh
+      export $(cat /did-material/did.env)
+      export KC_HOSTNAME=keycloak-consumer.127.0.0.1.nip.io
+      /opt/bitnami/scripts/keycloak/entrypoint.sh
+      /opt/bitnami/scripts/keycloak/run.sh
+  initContainers:
+    - name: install-jades-issuer
+      image: quay.io/fiware/keycloak-jades-vc-issuer:1.2.0
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: providers
+          mountPath: /target
+    - name: register-at-tir
+      image: ubuntu
+      command:
+        - /bin/bash
+      env:
+        - name: DID
+          value: "did:elsi:VATBE-1234567"
+      args:
+        - -ec
+        - |
+          #!/bin/bash
+          # source /did-material/did.env
+          apt-get -y update; apt-get -y install curl
+          curl -X 'POST' 'http://tir.trust-anchor.svc.cluster.local:8080/issuer' -H 'Content-Type: application/json' -d "{\"did\": \"$DID\", \"credentials\": []}"
+      volumeMounts:
+        - name: did-material
+          mountPath: /did-material
+    - name: register-at-til
+      image: quay.io/curl/curl:8.1.2
+      command:
+        - /bin/sh
+      env:
+        - name: DID
+          value: "did:elsi:VATBE-1234567"
+      args:
+        - -ec
+        - |
+          #!/bin/sh
+          /bin/init.sh
+      volumeMounts:
+        - name: consumer-til-registration
+          mountPath: /bin/init.sh
+          subPath: init.sh
+  extraVolumeMounts:
+    - name: elsi-trust-store
+      mountPath: /trust-store
+    - name: realms
+      mountPath: /opt/bitnami/keycloak/data/import
+    - name: providers
+      mountPath: /opt/bitnami/keycloak/providers/
+  extraVolumes:
+    - name: did-material
+      emptyDir: {}
+    - name: realms
+      configMap:
+        name: test-realm-realm
+    - name: consumer-til-registration
+      configMap:
+        name: consumer-til-registration
+        defaultMode: 0755
+    - name: elsi-trust-store
+      secret:
+        secretName: elsi-secret
+        defaultMode: 0755
+    - name: providers
+      emptyDir: {}
+  realm:
+    frontendUrl: http://keycloak-consumer.127.0.0.1.nip.io:8080
+    import: true
+    name: test-realm
+    clientRoles: |
+      "did:web:mp-operation.org": [
+        {
+          "name": "READER",
+          "description": "Is allowed to see offers etc.",
+          "clientRole": true
+        },
+        {
+          "name": "OPERATOR",
+          "description": "Is allowed to operate clusters.",
+          "clientRole": true
+        }
+      ]
+    users: |
+      {
+        "username": "test-user",
+        "enabled": true,
+        "email": "test@user.org",
+        "firstName": "Test",
+        "lastName": "User",
+        "credentials": [
+          {
+            "type": "password",
+            "value": "test"
+          }
+        ],
+        "clientRoles": {
+          "did:web:mp-operation.org": [
+            "OPERATOR"
+          ],
+          "account": [
+            "view-profile",
+            "manage-account"
+          ]
+        },
+        "groups": [
+        ]
+      }
+    clients: |
+      {
+        "clientId": "did:web:mp-operation.org",
+        "enabled": true,
+        "description": "Client to connect test.org",
+        "surrogateAuthRequired": false,
+        "alwaysDisplayInConsole": false,
+        "clientAuthenticatorType": "client-secret",
+        "defaultRoles": [],
+        "redirectUris": [],
+        "webOrigins": [],
+        "notBefore": 0,
+        "bearerOnly": false,
+        "consentRequired": false,
+        "standardFlowEnabled": true,
+        "implicitFlowEnabled": false,
+        "directAccessGrantsEnabled": false,
+        "serviceAccountsEnabled": false,
+        "publicClient": false,
+        "frontchannelLogout": false,
+        "protocol": "oid4vc",
+        "attributes": {
+          "client.secret.creation.time": "1675260539",
+          "vc.user-credential.format": "jwt_vc",
+          "vc.user-credential.scope": "UserCredential",
+          "vc.verifiable-credential.format": "jwt_vc",
+          "vc.verifiable-credential.scope": "VerifiableCredential",
+          "vc.operator-credential.format": "jwt_vc",
+          "vc.operator-credential.scope": "OperatorCredential"
+        },
+        "protocolMappers": [
+          {
+            "name": "target-role-mapper",
+            "protocol": "oid4vc",
+            "protocolMapper": "oid4vc-target-role-mapper",
+            "config": {
+              "subjectProperty": "roles",
+              "clientId": "did:web:mp-operation.org",
+              "supportedCredentialTypes": "OperatorCredential"
+            }
+          },
+          {
+            "name": "context-mapper",
+            "protocol": "oid4vc",
+            "protocolMapper": "oid4vc-context-mapper",
+            "config": {
+              "context": "https://www.w3.org/2018/credentials/v1",
+              "supportedCredentialTypes": "VerifiableCredential,UserCredential,OperatorCredential"
+            }
+          },
+          {
+            "name": "email-mapper",
+            "protocol": "oid4vc",
+            "protocolMapper": "oid4vc-user-attribute-mapper",
+            "config": {
+              "subjectProperty": "email",
+              "userAttribute": "email",
+              "supportedCredentialTypes": "UserCredential,OperatorCredential"
+            }
+          },
+          {
+            "name": "firstName-mapper",
+            "protocol": "oid4vc",
+            "protocolMapper": "oid4vc-user-attribute-mapper",
+            "config": {
+              "subjectProperty": "firstName",
+              "userAttribute": "firstName",
+              "supportedCredentialTypes": "UserCredential,OperatorCredential"
+            }
+          },
+          {
+            "name": "lastName-mapper",
+            "protocol": "oid4vc",
+            "protocolMapper": "oid4vc-user-attribute-mapper",
+            "config": {
+              "subjectProperty": "lastName",
+              "userAttribute": "lastName",
+              "supportedCredentialTypes": "UserCredential,OperatorCredential"
+            }
+          }
+        ],
+        "authenticationFlowBindingOverrides": {},
+        "fullScopeAllowed": true,
+        "nodeReRegistrationTimeout": -1,
+        "defaultClientScopes": [],
+        "optionalClientScopes": []
+      }
+did:
+  enabled: false
+  secret: issuance-secret
+  serviceType: ClusterIP
+  port: 3001
+  cert:
+    country: BE
+    state: BRUSSELS
+    locality: Brussels
+    organization: Fancy Marketplace Co.
+    commonName: www.fancy-marketplace.biz
+  ingress:
+    enabled: true
+    host: did-consumer.127.0.0.1.nip.io
+# register the consumer at the til. Only possible if it runs in the same environment and recommendable for demo deployments
+registration:
+  enabled: true
+  configMap: consumer-til-registration
+  til: http://trusted-issuers-list.provider.svc.cluster.local:8080
+  did: ${DID}
+  credentialsType: UserCredential
+dss:
+  enabled: false
+  crl:
+    enabled: false
+elsi:
+  enabled: true
+  storePath: /trust-store/keystore.p12
+  storePassword: password
+  keyAlias: test-keystore
+  keyPassword: password
+  keyAlgorithm: RS256
+  did: 'did:elsi:VATBE-1234567'
+  keystore:
+    keystore.p12: MIIfCgIBAzCCHsAGCSqGSIb3DQEHAaCCHrEEgh6tMIIeqTCCFGoGCSqGSIb3DQEHBqCCFFswghRXAgEAMIIUUAYJKoZIhvcNAQcBMF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBDnX5gb6Rp1izcNcDM63kYsAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQlr0FyfIPiMIwk4PySc+hT4CCE+AL8tUbcBU/EdBl+v8Xrrp+KRQEnmLX8Pju0dPPxrqI/Zx9AfCBEMLERn3ZQO0fommZKCJaMmQFgqwSfHA4lUMi9lcm0xvWb0xgPuxIOcdJvm8fyp6sX4IqNCsjyiT73Bw3n/fdamU1AzUEcyNjSOBpW7/lWuxRRiL2H+t6MeZFUnoHHUg0x8vbuIYHdUYwtNJDh5V3WUXryb0w9suxc6yGcuYAJlvlicZYKxmj2Y4lF1s7CllbHAHLEizDR6LgZr7M+4AG0bid/wHWYRWbjZgXLU7p1RFD2dbp9VoUKq+yUdWuNhyja8PI7ndmY5C2MJ8bbYTfeWWL8BFPsKlJmv14Qdg1O2v0eupuNFcxLxjANZfrKx/6PjU4RSC5ig2oWhUGJXLGFDaGFM3ZlFnHqfpeHHRIUv7ayB+ibGiwxXQKrYCPYrzMFJPfaC5zFB1bbBqX2arpwS/cNrUztgelOjb/9Le3pCEzTIPPQztyohmHmY45PDmZmHer8HV5i6IMxvyQq7apHWGAQq/zSuOXs/Ej+TeZXY3uWjq8cd6iCKsNn2C4nPtgafmmldnaSVYVnQ5AdvsuUSIklAhFq4f2Z4iGxJZnqaZUn1DHcLj6XtwLkasevzwCUEx5xqECpScKZKDE6H6kFuQGArThr4JWmEac+ZspWlgAjb8o5yuUAkCOFKlRYagq/Ml/zS3MZvVt8fL3uc2dqmaADDZ/oeWV6mRlC3Qm7hQ2efZrXjr0sI47ocSTSf7hlK0X4n7vE/xpvzvbqE6/SqtzEdAbxzM2s6+cntTYfl6O9Q4SCZmtqwNIG6soCui3aBtYUj0FMlFb93iTsq4jz3sGuHs8MIVnQ+SOqIdlhdERmcyMfa1T6qa4iUlnIr8czBXIvdQzzBeyvSYP6lJdSeu6clnbxzWgH0yTQCCLdkX4bl5jMrzC5EG8IfI18/rKfXYT0BX71VhSGj9xOF6T/YjmhVAXJZC5t7stdUObk9QmXdX54z82zNbz5XjK6dG5LfUB9ynRdZOxFHrd+YMcT9teUvBsokPc96VO/bBTyCKtm3lPpDVIFl4b3muRSEQx/9FS4vyTMK63H9ecgPiHZVtVsUmOx4uSbcb//ADm00FPrkLKjmvyZgSZjE2kNJaF2xJtb9R91xGhm542ySjQflQ0+ua7NOGCMMJ+uUQE1Z1RH8EeH4/SjjvrsTviGgp72Urwg5NBwHhbGgCkMUSsYfbw5AvTDhi75p5ACk/3itIGvaOLsHV4+XbMNcHHMvr0B3Q/LSBV7A9M3N7zbWgFaLM2J6DuJ9gEZuJQr4f8tawcnvhhol1Mh9Jpdji0BM8HqwtvXDpwFX8tW9aoa+AYT8MLjU4kdkZkQfRGmJ0cBZGF2AifJGbPYvmmfZKSbOGBKRldHZzSxRb0ox31vcsd9xiuroMCYb7vSv/+fMRnr8o9iKyYrYMV18FQ/8pH7OYFW2RdAFtBwWotMXmIJMHDVOOvUIjLoLmLR/cw8rQnYZIb7hJwQ0U6JkzkA9mlk2V7S1bIhkMqabVXkwtz1OjQh9dOL2psc7dMzYQyzqwNAStxqHMu0Wbr/r8bR2ZzLn/8gVkr4HJM70Qf5kqIl5W2Md8vsWQRe3RKua05zlg0RK3+aJvUMiLutS7YGSUVJeixr0rqYPyTgIjhr6oJLu2z2bF8uX8syEHvBq9QjazIsiBqgF32iXCuUVjg9Mu3zyvE3uyUmBfjyvJ5tTHFT/LyOLVBN2u/NbWX+teMuC/QOiWROgmPbwAbF5Luz2MtdN2A+1gR6y9i9oQMzWQv8yFvym6D6d89b2ynKPISDw6tJQbkiNVBR77nUgXdDqBKONoWwWWx66pQEHB17mFFQ57CLljXGTb8TjyVR8EP45WuXH8seGV9fZNuFrzuIjQP0FbqBAUeyg0Io+VMu0nwQIMaQMg16mdY9Zb0bvC5eezml8RGsy0YQ9XQp1rP8hXNBTrWV6Ex3DPS9KfCSYpXeYzQnryIBk2kQ7hTH5g9OrounrKeJuaJGJejIxbRCtCc5G+hcyKarSx84ziDbhxWK7L2wABQQ6BJ6byhJ0BxPOUuWB3NySgDOsZ3DyPwTzlnOaILIktKlldKQ2m6QzV2ZzuGyZsJuY5ZgQVfkoPFJVMrx9Whlt1gyc4O4TSHkZ64tycFgmINK2OTy5ZBr9GpIph8kVUg+5Yjq3W7gl+k9udruJk/GnvaHh8SJbpoKtxpaRzMdVz9pX+8UKWpJU/jp9QchDGAFXKi5+dEUIQ3Bo8yYYiv1+JyR+svycF+lHKxt1jH96o//jAbWh/7rv5PsjHvV6MFLgHDMjQ9vbGW3zh2NrEZF3KNQLBJGZHxRc1bxgaXJiuRvTEYxF+z9wFa6xJlxVAmc9pXUKW7BpS8HOXbaSq7FQCT0rSy4Q5MEzJYY2lnhxng2Cm2e8HfuRbuSCXTTJyKVbBI6vIkA7y+RCZ6lnXL16P2Kkae8rbI4d5LXBK9MytTHyFEYl4RemcYZaDt+Xo72GLsne01K4stisk9apVvTGapYFi7nVRFa4uLHr5HzHTW4PVlNO33DaWPjKa3drDKy6c+0nk8OYZyX9jB5U/l+7KpSebuf7wlrXBBdTInqynZzU2iXouD4bHih3GqSdXcEI7HAjOhDepaT+pjiMAHA8y7b1mmVit2Rmrxt6QixOMb8BtMqdLnwSOMINjF9yMt/e32Hr7/Pm8S5b8R2MoWmtOJOsdL5aiFFQtu4eutXQWq7+UQYy5x6Ncspd1Vf2rFIhN1a2x4jwhjsMHWkiumfbe4rp1o344Nq8yoIa4w4GLfUfGg73hVKxotq8qyL7BIGEX37Z8fctPMHPPCIvrCqcGCnszvFt9E43nBR7BVOSr5Ul0tsxNSR9LCRNNzuEA6/KhA6/bAxMztzthkhWUOEqsXyIpSo1sk7/IVnuDTKiiIS+Cap/1Q8knJ1Pu1icGzELI6N3pg+4tru99dFXm5PJsw31ld1y4en2cCJy3AIOOEvdPQD3gyIHgRxsNa18J+oig1ZrZm0rFSMFzZAITvPdvdLCmKq64uRfvb+GEuY0iZulmJ9LRCRiRDRvvWPUtY5GGYbqVdPBu+w5TYvaG5YRg4+K7M12pvqGjH0d4tUMXlA7cEQ7zYX8Ht+u5aM+hHDDM+LnUPxE42xG6enHQpylYjhdSbVRacMKKRoBBtd43vV/OtycI5xooOIQmez6cmbUPKJzQ7XVCUz5BFJNbIXjgdmLqEqtBOJZDPjoEjQcuOrMCvmphbveXWEtLYVhD2bwY9/TJfmm05xiZ1uWYOOW1Sxw+d3HZo/0iCXHgxOX48y1qKsKSadxyGvoQmFY38TaZeihjeJR7Xp+iuqd93HfAal47LEspNESwDSsATh2JiKL6uvWs4ggBslUAaevLk8RRCsAm/V4glu4b5EC9L+caUT/cEGfKFNtsmadEHxG/Ht2jtakRbdtvQR9EVJB2kZ5WIgUxFXw02mavRelHiTyqpw9wpJD11+CTCG1NdAoNJpSrfdiRM8mJo6ze+x/BeGQBbti7vlWIHD96+/Y6nbKmvMcXo96n4DrmpHrW74bZeSqPYZMfe7O4H6zVQu9WpY/iJkAgy5pcf733A+QikIOQK5/vsC4oDDzX9UPZmDTmPyzrovgSpPEgK88f+2GbiiTKqo8buPRTFfQRWj5Doq6vgTYjAgsO4gH+2bC0VOIgTE/eO7KE5kqRzo3gssAcNw/AD97MzJH0Wp9k54eXxiWZGNRrZJIjAW0kr9hz4MXFIMlwJqFBQ9W+f6fQT4FLLB4EIDLyP4HVpebgaK/qesR+dvvA0I2+osGKp+hIraudP0azh5IbMiQvQHyrtgJYnI05I8u8N5wV9GGJ2TteAYA+3cfCCSwmlEobE6Jg83HgwlWnKvjtAVxcYqX47tGITfhDSD3fitFfcfpwndgsFZ/nZg2USjV0z9144dkEJwa3XHLKlkxWlKH3Tp+/jBJJApcnoMRFTlYhiPwetx3l6XMVtZEDsKmxdRpmYUC1D1mPSQXzMxVFWmZk+Foz07dEDI44NybXqgrDf6B9xorCFRfhBxTpJrkMRXY61aKW/oIOORI3ctrrq0+6W8Uv1mc5gfq1fcklNc7aaBlqLJhsivAttEhOCJZSHctpRXtYs8v18Pkg7BT9EB1nzzxWGKu73e45fXS5O/qvM2A88GDkjMuEXrIFrUvPa5ETESPlCJJypNpFT+AJSFA0fpnXR3VAbcY0QUJc7L2CvWKUqIqTEDWYXZyRUFEaWMza2fzy1pJka/7G7kKUTgB8KY+cvc4l5BzvESZJKjrXwgDzTJRW6i2CdWMlOtzPcD/IDW/OD0R1eAJ72fi6QlOUKW+mm017YrtoZDbPBYA/Cx5gWoyHw6bn70Y8BBoucLjtePtNiu2Qg2DYK2jboxUunZUrwuG/XApbzZvQcqR2H4YpAbARu8Xv0dksF3aI6VvAUIk/GubItzZ/pasGFTg/rZYbIbWWb3w5P448HTkLtzjKMwaSSmQb9ZGqzFPG/pc6Ey2jejqxm+mptWT+qyN2R2sqR2EX7+JKnbUGuhYcwplmn3utsG/m4ApbrowMFibYZs2fcBLPHEwSnM3IXLl4yVyUT0tbrKH2tidxYA9jSvr99lVhEm0v1gBQluvunVEuUiqnQeAEC6UcTVTBkD8rVCrV96NlDFRF8TS1rB7vSdgdU9nqs1i+PwqEa/OiSLGRT6N+4CSusN3L2LAiGZJuYbcryRtTxKMWh9CnygtcLgDBHzhAh2yhHIiVNCfDtrcoOTLzTRXgCsvofCv6J7J+Y8GzaL0pR8l2FoItEji7OYTVJ0h4Wk71R8lPT3qR4tPr8dQj22aPzq7x1xHgY26HQkFVQCU2faHcLvKaXR0RK3wginbq98jSMmCuGqDwV8DZnl9VDmHvoJtzYj2Ix36eTAmxb4D5D/U2xiBD/0XOrbOQAsz+nQU0o58pXhkUvfWnt2FiXLgg1bojYRWoHh4KfvzDOVVw1kAuUAGhGCqTp9epGry8qF2SPwzXVChF98FOxLZxL1uCJewCO68IrpzZLrnEPDSAJPcZeu+/MxPhTQph0dToKkyWNfh/LTtA1yJdOfwMBTUNvhb4SBOeU1GdLmx/r7EkxauiZ7XS7Ko10yaV1PJMzOOZEEGIoK4ZaX4O3oYL+fBDr/BJ24lUmpTFhjmQ3qqH6pIvCrW+yZlfyskJWTjhxtoVRoQ+7NKOe/yRR42ybDI44OcE1sMl8rXB2EdJvsJwgcpthAb05VjmZwMUgeMeh4iTKfikCfzQEu2uFF/oGFuSTm+/riBCZkYOucqZvzZjh5nLbBfxtj8kjik1M/fEQkOca7qWLA/himOQsfRhZhywD1imnpZLCQsk4CnWCoU/HO57z1ZnQzabXkR5meZopnJ6z3+5ocXtJh1VZjDzI4p1V/f/l5BRYBcqh+eqFX5nhGJknXbvaXTX34AuBGPjzqZMg0ygwEnQsB6sWeGp9chfZoWp5Rae6EhK+XNgj46Bx4o+KJWiBjxkDW5l1nKLhZsNMJbk17tzZUbn71PwVph9wRy5fwruTqtTMVlV+18epUR2XLDr73LCpElIYb6nqsGeZeDYGQ76fQg76htfTf2prXthDuhZ+2G87KYPxS8yHiIhNGuSM/bo7fem80gOvrgjeZXzB3j8Pqy9Qb3kOFNQA3qI23jxIBcFKUju99mJOU0mFJljdXvDxEDY6NjTbqYPd5SWKFupLmvKRipzSOR+lMPqHL1/3uGZv46zIJX1st7S9oPN2KaTLg39nG/h5y6WuEyrmemtRHcYTDAacXRjxMd7bUcj1VMFMbBabWrTLVMyBCxdMW9W8mNSh8PjiuPnsZg612zCgILyQhWoFQuv53lPQNYsyday6GiA88PNa8k5YZSkNCb0UfS8Al8nYyxkuSvnevGxfJmpR7gQLi19oY3P5/pr06Q4pvC1JpTpobo6fKSwkV4Z8fXSXAM0flUgcFJ4h5R57FZD6k5fQovzzX/47WYSZ8RbPDpl6B7RLY5yWujZHIRDPq0vGVw8ga+OGvGQuBo/SXqG1oIOYk0hvC7c1kPOfoCgMHA+XoAXdpspuUo+jbSBWdRDeFRf2DQ/1n3lqIRui40P9qvORcxczmIDbqjSHcbcBoxMF8lIFCeadlxLGap88YVl3JL7fa0knBmOusk5r0yo49LRap2aMREZwuldytLNHsXV0cqVZ+CZEFwMbQ9ZvgIlM8v6B44mSzAXCAra275klntTyen39xPWkODpgMDtXdjNRexYO0uRFRH6ChFNHhVG9l/572own9f0MhuyGm0X1OkyO0EQEh6ZnErfXibBCy3UKoxoPddhPWKtJJ3VHEe4OfCnX/k5BoKshzl6v6s8Q7foAw9hmTgy3reBM6Dyv1OEwXFGAID3nQOsLBakz6evv5JKG4OquONqnAAfxC6MigZ1FVQvpOdKKxw5bUNKAaQA91dSCPYpMFWcPGDK/20rSu05x8C4W/rHlRthu79cY0weOyDJ89RbOIY5i9odAx9XsT5xRkqiaxRIxWUfo8l0xXkVvJQ7ZM6ZcwWnUggMxExZ+H3oQAxmuY/iLcRelVeUbiVy+LKImLkH6Wjf5sP36jHeVkKqCDPohjo5fcCUTf5BsLLNRKKbq+ZWfhZN8Sdr/ZNnWfQuODeyPEJqDRyE/22FYOMRdVApCougzHv9ikQeXE55LpJ/f61G1fVVKepYvS8rmsnOnc1cWTlniK4c09o9Ghzu+X6VK8lSrMlwCdtnTmQTi1dzYZqrKERkwggo3BgkqhkiG9w0BBwGgggooBIIKJDCCCiAwggocBgsqhkiG9w0BDAoBAqCCCbkwggm1MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBBxcIK6qPsHxp7iTvwopEE9AgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQA8lC8E73jiZK7aiRQ/4XxQSCCVD9orKaV0Jy7lfqZd8I59C6GClo5Vtv1wWKhWXDtSkn00XvdmGvonEcmohx4qeY2KJtyuFWwm6drCNsCu3iztcRGxM227MNrSeewoBpDLng1Whiei2VJN6HNlFUmbbRA41Z7JgA9SvYo00rdO65DDOKOfpoUvpq5B8ogypeNKKHy+T4wiei+xwP7OqkM0WTUmY5rV+RYSDH6eMUKyqJkBrPYANPwmc6GKkYVvRz0Zb72dsdSje7RlrIS9c/uwkATc2hLgxPYxFQKKQV0eYi3eG5dyZgyg9T1nyF4mkgOq+A4yJU3+F2TjBIkgZbckRjy+q/6WCfJ/R2DofskokQIGPrZ2V6qiZVTrb44cdAtXRPIaa4tfkmlO6bbTKUwwk1ztvFSZ4kKV9cReKBrljJj+oo56TvCDFHcu7l6LDMCUvyVNcDDWn8IPWfG1r8+4p49zHBADWiQlHCae5+/J4cuji5gARLrADA59SzcCo4dpfiXWewnMRcyZ0ZteqWHn4TIJ31uV9iKGgJuVFM5vJXOgc1D2b24zcshYK92jgdFabdTeXyTvHH6oYNLjrlPlag5t4xihIpp5vy0igEY2eSerus+dsxsmolNtNsKOZwi3ICAzb42tdQjcU1YKtFrkuvjP9umD3ueT6Zckmmx54qleFkKm1tOPGckhwGgRV8cFVg/X+/PAythcvJzAEKVt86DgzeaPFYlUxlnHZYGeHjhMG67fUPvxLROkaDvinUUEZNxhkFYcxfBsKl9a4A5P7qBRmDPquXGPf1cU0wf/J59YeoFV8kzNxsM0SZMZrXBeCmT/o9ho6Z4D5qlhbFyAcZ2yUdJTsy3N/VRLXstDW7m/V0OTMfhJRLuZLdO3VIe3QLAHcAS6KHnabuVchEm2O0I1q/LZ/ZO7sDNnS9EIPKKMF0enu1GIzWn4nEQaG+L29OMI92Iq4+sribNmbbe7nhxYFZjqjXbo0Oc75wjUBUI6g+eog4XNz9wt+KD7hpE7LPJoYFCkaFYO/SR4vwQVtPx6o3MfPhTzsUONcDH7scp6l/j5WlACcY5DBXAUWSOa0iMuGnYyTUZVGe5/nIE1H1OUArlhfG1ISuaUqDCWV2UV4dGqmRn4iGw09Fry6HNb+6YtrtY3mG0zgTJYW93qYn9dxNCmHxsD2JAHUA8mGzQ/lc94GTcZCmKayuRqioEL0levJN4jvh1Tk6M9m84MYAMphSiFnLep2GmF9FO4hHvqOFR/0vFbD4zqQjxQuP4c/e4E5DlAPbVKRs9l2GHWPhBwQD7BHdn7v1XhWCbHNXj4B2wOkvfmQwWc/VmKATxIJboDW3lq2IDIjIWe9HNAH5V17qtSIPb0ctRQ0102k54Bv7cFpVfISXnOANx7pWhOPuxC49B+2lq5rb5IFcwfPyDEf6+nb+9Sn1/GQmaPyjfSz6mcIbgY1e3lB6BRQcZOd4Kw6G4eP28Rv77K4KM4X+GUlhVBsQlFnu2PiNfHzJGg6A/TDuipUAiuIBGDHG19OzOix0E8ddvf9D3BngUiuNJSODjPcnlNBm1f4zza2DGr7nqSUrplOPm0OObum/WO76q67AHXRvqFISaoTCdBjKGjRZP+KfxeS0vmWX+nyIImvi+J41WNmwF1qqcW4g2wm2KPg9hyiMFJDmysN9JAnZi1i9/z6OeEGQDqLFYWAmHI5yS3ZQhsyrMGqS3HZR1rWVEkBTK8fW91V7fQYSIB0/kjlKIPR7OFTadI+rzVsTRCPzcLG4uzO+sgfuNVFXWBn4fkkkBEORh7kqL73M2qfBEFQiOT0YvVqY7C+mc4c8VaNV4fTFQPPbHigFGVzkP7l/3Jn4nMCf8A41hvntueenkW5ZSYvJbpNuy/wahYJb/Zs506WNR6v9Adr5b5NZhG/6Cey33G6KKj48s5X3Mjv/kBteV+1oYQse0oTv40aAJbUwKjgblSG5vYS24c8w6O6EwSTPDCbQh5pYRZ5amKO0JzgV7BenOvI7g7kozoH+Crnmq4vG8ErUmRGUq9wOoR5xjx0ZIC6qAPEYOFqI43ZYMndGleGe2UaHJBd6BKPxFIbOl6kPThWICwc62t/U8HczqmVnlvVxiYVFjWdiosp213az5WbfBw7Qj+Fpv0WkikOub+QSu8YjE3sNoHmFWzpZrnb7HQHd2qxxSgplAFbHRK6Kw1O3TuES+OV1Dn0RGtQO4yqDXLmAd3UAQIYPeRBKhtP2K039jfi6Zo+cl/wgdEjpEWLfnKaGBhLCtH+Ql9vovWIm8gzV0Ib2hyluE2GmVdPHctT5Mf7468xrEQ8AIBdxrx0ovsSaDuvRIH2k2WfQYMZ79sa4smXN6fJqJUegrAe6ND+JyK1FcP9lTLVTw/7+IKIx01zLPxT2KTRI5hJfu/0j5ha67YehyGzsX7s7PF5sEKMMRMJEH90ESDNAYy+kVNaAVHff756B8Nn/VPVdDUKBzs2IYp6Z5fAG/7iI9HShkKfmKSMsmXM0RQhBnspjWTuA250DOkRGJb/CwVwqqZ68+8Q2qJCWmAeSoapf7SJzp17LKhntKEgE+eSRfCspHG0+byEs9T/gOlky4RAZRhBbPr/Ct5ypsyeqMU/R6o4UlOTwgXdpN+Gt1r3NUsqNCFm7i0Zo17peiPCWbenXrCo2aCqbJuixKljkLMQvwHopPF8ghyC7mPEAb/hwZbckox6EuEdGIqbJEWK3V13gjGgV7UKdF7JJ0BGuCu0W46RPfBIvJAZAIAE1X7M89BwAsEDojXeDmvd+//Nh9o+vvHxeeWRO2buOfkHA4MRjKmoa61d9mOHYzrKd60ExJ7jW9uLV4ueSmlDRCFfk/2IXn3VUbbJqvVODMHtWKRKDJ4jAh+uWFzH4vAjdNknP1ydoFPXeccZLJX2thQFDH7QxaviwNHx3llGY7pb3vXQb3VHV7Jid4OAkK6ZXgMKeTPsTaJxOKgzpbom1RNGaJh0px9gVb5IZEDlThjJH0uTspklL0w85R5UFWILXO2ztnhAra4HFm8u1IeTvaDbH8fisF4gZqZx8+REezlDw3CnQJFkxy62WRCIJcja7bxASX+qVXhBesfXPR1bRxily4Z4yAKMiEAvNfI5yuhmE6JS0nIq46uvrRMS4SromK39chqEf/vDV8LAqvWTTW60czu6OBgsw/2XYjNE+zGkMfv+lfjFQMCMGCSqGSIb3DQEJFTEWBBTaFUz1OEDrkfs7r9utNIRPbCuNOjApBgkqhkiG9w0BCRQxHB4aAHQAZQBzAHQALQBrAGUAeQBzAHQAbwByAGUwQTAxMA0GCWCGSAFlAwQCAQUABCBi02YqL5/hqG5NoiyFMjyMsGIub07UHTGn6nZrBsFuPgQIHTWP6mipUTYCAggA
