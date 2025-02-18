@@ -1,4 +1,6 @@
-# Aufbau eines dezentralen Datenraums mit dem FIWARE Data Space Connector
+# Building a decentralized Data Space with the FIWARE Data Space Connector
+
+Aufbau eines dezentralen Datenraums mit dem FIWARE Data Space Connectoar
 
 ## Preparation
 
@@ -143,7 +145,7 @@ Exchange the VerifiablePresentation for an Access Token:
 ```
 
 ```shell
-  curl -s -X GET 'http://mp-data-service.127.0.0.1.nip.io:8080/ngsi-ld/v1/entities/urn:ngsi-ld:EnergyReport:fms-1' \
+    curl -s -X GET 'http://mp-data-service.127.0.0.1.nip.io:8080/ngsi-ld/v1/entities/urn:ngsi-ld:EnergyReport:fms-1' \
     --header 'Accept: application/json' \
     --header "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
@@ -173,12 +175,12 @@ Create the actual product offering:
 
 1. A normal UserCredential, to buy acces:
 ```shell
- export USER_CREDENTIAL=$(./scripts/get_credential_for_consumer.sh http://keycloak-consumer.127.0.0.1.nip.io:8080 user-credential); echo ${USER_CREDENTIAL}
+    export USER_CREDENTIAL=$(./scripts/get_credential_for_consumer.sh http://keycloak-consumer.127.0.0.1.nip.io:8080 user-credential); echo ${USER_CREDENTIAL}
 ```
 
 2. An OperatorCredential (user in role OPERATOR), to use the actual product:
 ```shell
- export OPERATOR_CREDENTIAL=$(./scripts/get_credential_for_consumer.sh http://keycloak-consumer.127.0.0.1.nip.io:8080 operator-credential); echo ${OPERATOR_CREDENTIAL}
+    export OPERATOR_CREDENTIAL=$(./scripts/get_credential_for_consumer.sh http://keycloak-consumer.127.0.0.1.nip.io:8080 operator-credential); echo ${OPERATOR_CREDENTIAL}
 ```
 
 Register as customer:
