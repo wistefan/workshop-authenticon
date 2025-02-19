@@ -56,5 +56,5 @@ done
 if lsmod | grep -q br_netfilter; then
     echo
 else
-    echo "br_netfilter module is not enabled. Enable it using: sudo modprobe br_netfilter"
+    echo "br_netfilter module is not enabled, but required for k3s networking. Enable it using: sudo modprobe br_netfilter"
 fi

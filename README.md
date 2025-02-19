@@ -4,7 +4,7 @@ Aufbau eines dezentralen Datenraums mit dem FIWARE Data Space Connectoar
 
 ## Preparation
 
->:warning: For everything to properly work, a couple of components need to be setup properly. The script ```./scripts/check_tools.sh``` can be used to see if everything is available.
+>:warning: The workshop setup is only supported for linux. For everything to properly work, a couple of tools need to be setup properly. Execute the script ```./scripts/check_tools.sh``` to see if everything is properly prepared.
 
 ### Run the base cluster
 
