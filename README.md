@@ -58,6 +58,11 @@ Since the key-material was already prepared, the consumer can be deployed via:
     watch kubectl get pods -n consumer
 ```
 
+Register the consumer at the Data Space:
+
+```shell
+  ./scripts/register_at_tir.sh $(yq ".elsi.did" config/consumer-elsi.yaml) 
+```
 
 ### Create some data
  
@@ -67,13 +72,27 @@ To have some data available, a demo entity needs to be created and the policy al
     ./scripts/prepare_demo_data.sh
 ```
 
+![Creation](./img/data_and_policy.png)
+
 ## Interaction
 
-In order to interact with the data-service, a Verifiabel Credential is required:
+In order to interact with the data-service, we will create a User Identity and get a VerifiableCredential for that User.
+
+Generate an end-user identity to use the credential in a VerifiablePresentation:
+
+```shell
+    mkdir -m 777 holder
+    docker run -v $(pwd)/holder:/cert quay.io/wi_stefan/did-helper:0.1.1 
+    export HOLDER_DID=$(cat holder/did.json | jq '.id' -r); echo ${HOLDER_DID}
+```
+
+Get the Verifiabel Credential is required:
 
 ```shell
     export USER_CREDENTIAL=$(./scripts/get_credential_for_consumer.sh http://keycloak-consumer.127.0.0.1.nip.io:8080 user-credential); echo ${USER_CREDENTIAL}
 ```
+
+![Issuance](./img/issuance.png)
 
 The decoded-credential:
 ```json
@@ -123,15 +142,7 @@ The decoded-credential:
 }
 ```
 
-Generate an end-user identity to use the credential in a VerifiablePresentation:
-
-```shell
-    mkdir -m 777 holder
-    docker run -v $(pwd)/holder:/cert quay.io/wi_stefan/did-helper:0.1.1 
-    export HOLDER_DID=$(cat holder/did.json | jq '.id' -r); echo ${HOLDER_DID}
-```
-
-The presenation can then be build:
+The presentation can then be build:
 
 ```shell
     ./scripts/create_presentation.sh $HOLDER_DID $USER_CREDENTIAL
@@ -144,18 +155,23 @@ Exchange the VerifiablePresentation for an Access Token:
     export ACCESS_TOKEN=$(./scripts/get_access_token_oid4vp.sh http://mp-data-service.127.0.0.1.nip.io:8080 $USER_CREDENTIAL default); echo ${ACCESS_TOKEN}
 ```
 
+![OID4VP](./img/oid4vp.png)
+
+
 ```shell
     curl -s -X GET 'http://mp-data-service.127.0.0.1.nip.io:8080/ngsi-ld/v1/entities/urn:ngsi-ld:EnergyReport:fms-1' \
     --header 'Accept: application/json' \
     --header "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
 
+![Access Data](./img/access_data.png)
+
 ## Offer access to services
 
 In order to offer services, the required access policies have to be created:
 
 * allow participants to read offerings
-* allow participants to register as consumer
+* allow participants to register as costumer
 * allow participants to create orders
 * allow cluster creation for OPERATORS
 
@@ -168,6 +184,8 @@ Create the actual product offering:
 ```shell
     ./scripts/create_product_offering.sh
 ```
+
+![Policies & Offering](./img/policies_and_offering.png)
 
 ## Buy access to the service
 
@@ -192,6 +210,9 @@ Buy access:
 ```shell
     ./scripts/order_the_offerings.sh $FANCY_MARKETPLACE_ID
 ```
+
+![Register and Order](./img/register_and_order.png)
+
 
 Create Cluster as normal user - not allowed:
 ```shell
