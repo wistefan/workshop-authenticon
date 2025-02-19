@@ -4,6 +4,8 @@ Aufbau eines dezentralen Datenraums mit dem FIWARE Data Space Connectoar
 
 ## Preparation
 
+>:warning: For everything to properly work, a couple of components need to be setup properly. The script ```./scripts/check_tools.sh``` can be used to see if everything is available.
+
 ### Run the base cluster
 
 The FIWARE Data Space Connector uses a microservice archictecture that is best suited to run in a Kuberentes cluster. To have local environment as a test setting, a k3s cluster with basic infrastructure can be created via:
