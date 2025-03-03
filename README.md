@@ -131,7 +131,7 @@ The decoded-credential:
           "names": [
             "OPERATOR"
           ],
-          "target": "provider"
+          "target": "did:web:mp-operation.org"
         }
       ],
       "email": "test@user.org"
